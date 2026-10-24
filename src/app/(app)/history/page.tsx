@@ -40,6 +40,7 @@ import {
 import { AuditDetails } from "@/components/GroupHistoryExport";
 import { GroupExportMenu } from "@/components/groups/GroupExportMenu";
 import { Timestamp } from "@/components/timestamp";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 import { Pagination } from "@/components/ui/pagination";
 
@@ -135,7 +136,7 @@ export default function HistoryPage() {
   }
 
   return (
-    <>
+    <ErrorBoundary onReset={() => void refetch()}>
       <PageHeader
         title="History"
         description="Every expense and on-chain settlement you're part of, with verifiable transaction hashes."
@@ -299,6 +300,6 @@ export default function HistoryPage() {
           )}
         </div>
       )}
-    </>
+    </ErrorBoundary>
   );
 }
