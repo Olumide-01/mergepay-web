@@ -59,7 +59,7 @@ export function HistoryFilterBar({ value, onChange }: HistoryFilterBarProps) {
           />
           <Input
             aria-label="Search history"
-            placeholder="Search title, memo, or person…"
+            placeholder="Search title, memo, person, or address…"
             className="pl-10 pr-10"
             value={value.keyword ?? ""}
             onChange={(e) => setKeyword(e.target.value)}
@@ -113,12 +113,12 @@ export function HistoryFilterBar({ value, onChange }: HistoryFilterBarProps) {
             htmlFor="history-participant"
             className="mb-1 block font-display text-xs uppercase tracking-widest text-ink"
           >
-            Person
+            Person / Address
           </label>
           <Input
             id="history-participant"
             aria-label="Filter by participant"
-            placeholder="Name…"
+            placeholder="Name or address…"
             value={value.participant ?? ""}
             onChange={(e) => setParticipant(e.target.value)}
           />
