@@ -22,6 +22,8 @@ export interface HistoryFilters {
   toDate?: string;
   /** "all" | "expenses" | "settlements" — the source kind to show. */
   kind?: "all" | "expenses" | "settlements";
+  /** Filter transactions by settlement status: "all" | "pending" | "settled" (#718) */
+  status?: "all" | "pending" | "settled";
 }
 
 /** A row normalized for filtering regardless of whether it's an expense or settlement. */
@@ -34,6 +36,7 @@ export interface HistoryRow {
   searchText: string;
   /** Every display name involved in the record (payer, payee, members). */
   participants: string[];
+  status?: "pending" | "settled";
 }
 
 function normalize(s: string | null | undefined): string {
@@ -54,6 +57,7 @@ export function toHistoryRow(item: { type: "expense" | "settlement" } & (
       id: (item as Expense).id,
       createdAt: (item as Expense).createdAt,
       assetCode: (item as Expense).assetCode ?? "",
+      status: ((item as Expense).shares ?? []).some((s) => s.status !== "settled") ? "pending" : "settled",
       searchText: [
         (item as Expense).title,
         (item as Expense).description,
@@ -75,6 +79,7 @@ export function toHistoryRow(item: { type: "expense" | "settlement" } & (
     id: (item as Settlement).id,
     createdAt: (item as Settlement).createdAt,
     assetCode: (item as Settlement).assetCode ?? "",
+    status: (item as Settlement).status === "confirmed" ? "settled" : "pending",
     searchText: [
       (item as Settlement).memo,
       (item as Settlement).from?.displayName,
@@ -135,6 +140,9 @@ export function matchesHistoryFilters(
       return false;
     }
   }
+  if (filters.status && filters.status !== "all") {
+    if (row.status && row.status !== filters.status) return false;
+  }
   return true;
 }
 
@@ -146,7 +154,8 @@ export function hasActiveFilters(filters: HistoryFilters): boolean {
       filters.participant ||
       filters.fromDate ||
       filters.toDate ||
-      (filters.kind && filters.kind !== "all")
+      (filters.kind && filters.kind !== "all") ||
+      (filters.status && filters.status !== "all")
   );
 }
 
