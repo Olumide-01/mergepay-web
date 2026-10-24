@@ -38,6 +38,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TxProgress, TxStatusPanel } from "@/components/ui/tx-progress";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
@@ -386,7 +387,8 @@ export function SettlementModal({ open, onClose, groupId, target, onSettled, tim
       description={`Send ${formatMoney(target.amount, target.assetCode)} to ${target.to.displayName}. You sign in your wallet; Mergepay never holds your keys.`}
       dismissible={!locked}
     >
-      <div className="space-y-5">
+      <ErrorBoundary onReset={() => setStep("review")}>
+        <div className="space-y-5">
         <TxProgress
           steps={PROGRESS}
           completed={progressIndex}
@@ -609,7 +611,8 @@ export function SettlementModal({ open, onClose, groupId, target, onSettled, tim
             )}
           </motion.div>
         </AnimatePresence>
-      </div>
+        </div>
+      </ErrorBoundary>
     </Dialog>
   );
 }
