@@ -7,6 +7,7 @@
  * fresh array.
  */
 import type { Expense, Settlement } from "./types";
+import { isExpenseSettled } from "./expenseFilters";
 
 /** A search/filter predicate applied to one history item. */
 export interface HistoryFilters {
@@ -14,6 +15,8 @@ export interface HistoryFilters {
   keyword?: string;
   /** Narrow to a single settlement asset code (e.g. "XLM", "USDC"). */
   assetCode?: string;
+  /** Filter by settlement or expense status (e.g. "pending", "settled", "failed"). */
+  status?: string;
   /** Only show records where this participant (name) took part. */
   participant?: string;
   /** Only show records on or after this date (ISO, inclusive). */
@@ -22,8 +25,6 @@ export interface HistoryFilters {
   toDate?: string;
   /** "all" | "expenses" | "settlements" — the source kind to show. */
   kind?: "all" | "expenses" | "settlements";
-  /** Filter transactions by settlement status: "all" | "pending" | "settled" (#718) */
-  status?: "all" | "pending" | "settled";
 }
 
 /** A row normalized for filtering regardless of whether it's an expense or settlement. */
@@ -32,13 +33,13 @@ export interface HistoryRow {
   id: string;
   createdAt: string;
   assetCode: string;
+  status: string;
   /** Free-text haystack: title, memo and every participant's display name. */
   searchText: string;
   /** Every display name involved in the record (payer, payee, members). */
   participants: string[];
   /** Every participant address (Stellar public key) involved in the record. */
   addresses?: string[];
-  status?: "pending" | "settled";
 }
 
 function normalize(s: string | null | undefined): string {
@@ -60,7 +61,7 @@ export function toHistoryRow(item: { type: "expense" | "settlement" } & (
       id: expense.id,
       createdAt: expense.createdAt,
       assetCode: expense.assetCode ?? "",
-      status: ((item as Expense).shares ?? []).some((s) => s.status !== "settled") ? "pending" : "settled",
+      status: isExpenseSettled(expense) ? "settled" : "pending",
       searchText: [
         expense.title,
         expense.description,
@@ -89,7 +90,7 @@ export function toHistoryRow(item: { type: "expense" | "settlement" } & (
     id: settlement.id,
     createdAt: settlement.createdAt,
     assetCode: settlement.assetCode ?? "",
-    status: (item as Settlement).status === "confirmed" ? "settled" : "pending",
+    status: settlement.status === "confirmed" ? "settled" : settlement.status ?? "pending",
     searchText: [
       settlement.memo,
       settlement.stellarTxHash,
@@ -123,9 +124,20 @@ export function matchesHistoryFilters(
       filters.kind === "expenses" ? "expense" : "settlement";
     if (kindType !== row.type) return false;
   }
-  if (filters.assetCode) {
+  if (filters.assetCode && filters.assetCode !== "all") {
     const code = normalize(filters.assetCode);
     if (code && normalize(row.assetCode) !== code) return false;
+  }
+  if (filters.status && filters.status !== "all") {
+    const statusFilter = normalize(filters.status);
+    const rowStatus = normalize(row.status);
+    if (statusFilter === "pending") {
+      if (!["pending", "submitted", "settling"].includes(rowStatus)) return false;
+    } else if (statusFilter === "settled" || statusFilter === "confirmed") {
+      if (!["settled", "confirmed"].includes(rowStatus)) return false;
+    } else if (statusFilter) {
+      if (rowStatus !== statusFilter) return false;
+    }
   }
   if (filters.participant) {
     const target = normalize(filters.participant);
@@ -156,9 +168,6 @@ export function matchesHistoryFilters(
       return false;
     }
   }
-  if (filters.status && filters.status !== "all") {
-    if (row.status && row.status !== filters.status) return false;
-  }
   return true;
 }
 
@@ -166,12 +175,12 @@ export function matchesHistoryFilters(
 export function hasActiveFilters(filters: HistoryFilters): boolean {
   return Boolean(
     filters.keyword ||
-      filters.assetCode ||
+      (filters.assetCode && filters.assetCode !== "all") ||
+      (filters.status && filters.status !== "all") ||
       filters.participant ||
       filters.fromDate ||
       filters.toDate ||
-      (filters.kind && filters.kind !== "all") ||
-      (filters.status && filters.status !== "all")
+      (filters.kind && filters.kind !== "all")
   );
 }
 
