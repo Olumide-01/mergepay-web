@@ -34,6 +34,8 @@ export interface HistoryRow {
   searchText: string;
   /** Every display name involved in the record (payer, payee, members). */
   participants: string[];
+  /** Every participant address (Stellar public key) involved in the record. */
+  addresses?: string[];
 }
 
 function normalize(s: string | null | undefined): string {
@@ -49,42 +51,57 @@ export function toHistoryRow(item: { type: "expense" | "settlement" } & (
   | Settlement
 )): HistoryRow {
   if (item.type === "expense") {
+    const expense = item as Expense;
     return {
       type: "expense",
-      id: (item as Expense).id,
-      createdAt: (item as Expense).createdAt,
-      assetCode: (item as Expense).assetCode ?? "",
+      id: expense.id,
+      createdAt: expense.createdAt,
+      assetCode: expense.assetCode ?? "",
       searchText: [
-        (item as Expense).title,
-        (item as Expense).description,
-        (item as Expense).memo,
-        (item as Expense).payer?.displayName,
-        ...((item as Expense).shares ?? []).map((s) => s.user?.displayName),
+        expense.title,
+        expense.description,
+        expense.memo,
+        expense.payer?.displayName,
+        expense.payer?.stellarPublicKey,
+        ...(expense.shares ?? []).flatMap((s) => [s.user?.displayName, s.user?.stellarPublicKey]),
       ]
         .filter(Boolean)
         .join(" "),
       participants: [
-        (item as Expense).payer?.displayName,
-        ...((item as Expense).shares ?? []).map((s) => s.user?.displayName),
+        expense.payer?.displayName,
+        ...(expense.shares ?? []).map((s) => s.user?.displayName),
+      ]
+        .filter((p): p is string => Boolean(p)),
+      addresses: [
+        expense.payer?.stellarPublicKey,
+        ...(expense.shares ?? []).map((s) => s.user?.stellarPublicKey),
       ]
         .filter((p): p is string => Boolean(p)),
     };
   }
+  const settlement = item as Settlement;
   return {
     type: "settlement",
-    id: (item as Settlement).id,
-    createdAt: (item as Settlement).createdAt,
-    assetCode: (item as Settlement).assetCode ?? "",
+    id: settlement.id,
+    createdAt: settlement.createdAt,
+    assetCode: settlement.assetCode ?? "",
     searchText: [
-      (item as Settlement).memo,
-      (item as Settlement).from?.displayName,
-      (item as Settlement).to?.displayName,
+      settlement.memo,
+      settlement.stellarTxHash,
+      settlement.from?.displayName,
+      settlement.from?.stellarPublicKey,
+      settlement.to?.displayName,
+      settlement.to?.stellarPublicKey,
     ]
       .filter(Boolean)
       .join(" "),
     participants: [
-      (item as Settlement).from?.displayName,
-      (item as Settlement).to?.displayName,
+      settlement.from?.displayName,
+      settlement.to?.displayName,
+    ].filter((p): p is string => Boolean(p)),
+    addresses: [
+      settlement.from?.stellarPublicKey,
+      settlement.to?.stellarPublicKey,
     ].filter((p): p is string => Boolean(p)),
   };
 }
@@ -106,12 +123,11 @@ export function matchesHistoryFilters(
     if (code && normalize(row.assetCode) !== code) return false;
   }
   if (filters.participant) {
-    const name = normalize(filters.participant);
-    if (
-      name &&
-      !row.participants.some((p) => normalize(p).includes(name))
-    ) {
-      return false;
+    const target = normalize(filters.participant);
+    if (target) {
+      const matchesName = row.participants.some((p) => normalize(p).includes(target));
+      const matchesAddress = (row.addresses ?? []).some((a) => normalize(a).includes(target));
+      if (!matchesName && !matchesAddress) return false;
     }
   }
   if (filters.keyword) {

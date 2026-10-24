@@ -224,6 +224,11 @@ export default function HistoryPage() {
                       <p className="truncate font-bold">{e.title}</p>
                       <p className="text-xs text-ink/50">
                         {e.payer.displayName} paid · <Timestamp value={e.createdAt} />
+                        {e.memo && (
+                          <span className="ml-1.5 inline-block font-mono text-[11px] text-ink/70">
+                            · Memo: {e.memo}
+                          </span>
+                        )}
                       </p>
                     </div>
                     <div className="text-right">
@@ -253,6 +258,11 @@ export default function HistoryPage() {
                       <Avatar user={s.to} size="sm" />
                       <span className="text-sm font-bold">{s.to.displayName}</span>
                     </div>
+                    {s.memo && (
+                      <p className="mt-1 font-mono text-xs text-ink/70">
+                        Memo: {s.memo}
+                      </p>
+                    )}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
                     <Money value={s.amount} assetCode={s.assetCode} />
