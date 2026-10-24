@@ -121,7 +121,10 @@ export function Sep24Modal({
   // Callers that pin an asset keep it; otherwise the modal follows the
   // user's persisted XLM/USDC preference instead of hardcoding USDC (#486).
   const preferredAssetCode = useAssetStore((s) => s.activeAsset.code);
-  const assetCode = assetCodeProp ?? preferredAssetCode;
+  const [internalAssetCode, setInternalAssetCode] = useState(
+    assetCodeProp ?? preferredAssetCode ?? "USDC"
+  );
+  const assetCode = assetCodeProp ?? internalAssetCode;
 
   const { anchors, isLoading, isError, refetch } = useAnchorInfo(assetCode);
   const [starting, setStarting] = useState(false);
@@ -287,6 +290,32 @@ export function Sep24Modal({
           </div>
           <AssetBadge code={assetCode} />
         </div>
+
+        {/* Currency selection (XLM / USDC) when not pinned by caller */}
+        {!assetCodeProp && !interactive && (
+          <div className="flex items-center justify-between rounded-xl border-2 border-ink bg-paper p-2.5">
+            <span className="font-display text-xs font-bold uppercase tracking-wider text-ink/70">
+              Select Currency:
+            </span>
+            <div className="flex gap-2">
+              {(["USDC", "XLM"] as const).map((code) => (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => setInternalAssetCode(code)}
+                  className={`rounded-lg border-2 border-ink px-3 py-1 text-xs font-bold transition-all ${
+                    assetCode === code
+                      ? "bg-butter shadow-brutal-sm text-ink"
+                      : "bg-cream text-ink/60 hover:text-ink"
+                  }`}
+                  aria-pressed={assetCode === code}
+                >
+                  {code}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Auth gate — the API endpoints require a signed-in session. */}
         {!authenticated && (
