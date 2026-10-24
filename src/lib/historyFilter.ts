@@ -22,6 +22,8 @@ export interface HistoryFilters {
   toDate?: string;
   /** "all" | "expenses" | "settlements" — the source kind to show. */
   kind?: "all" | "expenses" | "settlements";
+  /** Filter transactions by settlement status: "all" | "pending" | "settled" (#718) */
+  status?: "all" | "pending" | "settled";
 }
 
 /** A row normalized for filtering regardless of whether it's an expense or settlement. */
@@ -36,6 +38,7 @@ export interface HistoryRow {
   participants: string[];
   /** Every participant address (Stellar public key) involved in the record. */
   addresses?: string[];
+  status?: "pending" | "settled";
 }
 
 function normalize(s: string | null | undefined): string {
@@ -57,6 +60,7 @@ export function toHistoryRow(item: { type: "expense" | "settlement" } & (
       id: expense.id,
       createdAt: expense.createdAt,
       assetCode: expense.assetCode ?? "",
+      status: ((item as Expense).shares ?? []).some((s) => s.status !== "settled") ? "pending" : "settled",
       searchText: [
         expense.title,
         expense.description,
@@ -85,6 +89,7 @@ export function toHistoryRow(item: { type: "expense" | "settlement" } & (
     id: settlement.id,
     createdAt: settlement.createdAt,
     assetCode: settlement.assetCode ?? "",
+    status: (item as Settlement).status === "confirmed" ? "settled" : "pending",
     searchText: [
       settlement.memo,
       settlement.stellarTxHash,
@@ -151,6 +156,9 @@ export function matchesHistoryFilters(
       return false;
     }
   }
+  if (filters.status && filters.status !== "all") {
+    if (row.status && row.status !== filters.status) return false;
+  }
   return true;
 }
 
@@ -162,7 +170,8 @@ export function hasActiveFilters(filters: HistoryFilters): boolean {
       filters.participant ||
       filters.fromDate ||
       filters.toDate ||
-      (filters.kind && filters.kind !== "all")
+      (filters.kind && filters.kind !== "all") ||
+      (filters.status && filters.status !== "all")
   );
 }
 
