@@ -6,30 +6,9 @@ import { useWalletStore } from "../lib/wallet-store";
 import {
   decideSessionRestore,
   type SessionRestoreAction,
-  type WalletSnapshot,
 } from "../lib/walletSession";
-import { getAddress, isConnected } from "@stellar/freighter-api";
+import { probeWallet } from "../lib/stellar";
 import { toast } from "sonner";
-
-/**
- * What Freighter reports right now, as a snapshot the restore decision reads.
- *
- * Never throws: an absent or locked extension is a state the app has to
- * render, not an error to catch.
- */
-async function probeWallet(): Promise<WalletSnapshot> {
-  try {
-    const connected = await isConnected();
-    if (!connected) return { status: "unavailable", publicKey: null };
-    const addressResult = await getAddress();
-    const publicKey =
-      typeof addressResult === "string" ? addressResult : addressResult?.address ?? null;
-    // Connected, but no account shared with this origin.
-    return { status: "resolved", publicKey };
-  } catch {
-    return { status: "unavailable", publicKey: null };
-  }
-}
 
 /** Public key the in-memory bearer token belongs to, or `null` when there is none. */
 function tokenPublicKey(): string | null {
@@ -99,50 +78,58 @@ function applyRestoreAction(action: SessionRestoreAction): void {
   }
 }
 
+let restorePromise: Promise<void> | null = null;
+
+async function runRestore(): Promise<void> {
+  useAuth.getState().setRestoreStatus("checking");
+  try {
+    const persisted = getPersistedSession();
+    // Without a persisted identity there is nothing to ask the wallet about.
+    const wallet = persisted
+      ? await probeWallet()
+      : { status: "resolved" as const, publicKey: null };
+
+    applyRestoreAction(
+      decideSessionRestore({
+        persisted,
+        wallet,
+        tokenPublicKey: tokenPublicKey(),
+      })
+    );
+  } catch (err) {
+    console.error("Session restore failed:", err);
+    useAuth.getState().setRestoreStatus("settled");
+  } finally {
+    restorePromise = null;
+  }
+}
+
 /**
  * Automatically checks session persistence and verifies Freighter connection status on app load.
  * Resets store state and notifies via `sonner` toast if the wallet disconnected or account switched.
  */
 export function useSessionRestore() {
-  const { setRestoreStatus, restoreStatus } = useAuth();
+  const restoreStatus = useAuth((s) => s.restoreStatus);
 
   useEffect(() => {
     // Both reads are needed. `restoreStatus` is what re-arms this effect when
-    // a caller resets it to "idle"; the live read is what stops the three
-    // surfaces that mount this hook (root `SessionRestore`, `Navbar`, and the
-    // app layout) from each firing their own probe — and their own toast —
+    // a caller resets it to "idle"; the live read is what stops the surfaces
+    // that mount this hook from each firing their own probe — and their own toast —
     // off the same render-time "idle".
     if (restoreStatus !== "idle") return;
     if (useAuth.getState().restoreStatus !== "idle") return;
 
-    let cancelled = false;
-
-    async function restore() {
-      setRestoreStatus("checking");
-      const persisted = getPersistedSession();
-
-      // Without a persisted identity there is nothing to ask the wallet about.
-      const wallet = persisted ? await probeWallet() : { status: "resolved" as const, publicKey: null };
-      if (cancelled) return;
-
-      applyRestoreAction(
-        decideSessionRestore({ persisted, wallet, tokenPublicKey: tokenPublicKey() })
-      );
+    if (!restorePromise) {
+      restorePromise = runRestore();
     }
-
-    void restore();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [restoreStatus, setRestoreStatus]);
+  }, [restoreStatus]);
 
   // Stable across renders: the app layout calls this from an effect, and a
   // fresh closure every render would re-arm that effect on every render —
   // resetting a settled restore back to "idle" forever.
   const restoreSession = useCallback(
-    () => setRestoreStatus("idle"),
-    [setRestoreStatus]
+    () => useAuth.getState().setRestoreStatus("idle"),
+    []
   );
 
   return { restoreSession };

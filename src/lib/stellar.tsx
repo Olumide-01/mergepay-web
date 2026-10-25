@@ -634,7 +634,9 @@ export async function probeWallet(): Promise<WalletProbe> {
   ]);
 
   const publicKey =
-    isObject(addressResult) && typeof addressResult.address === "string"
+    typeof addressResult === "string"
+      ? addressResult || null
+      : isObject(addressResult) && typeof addressResult.address === "string"
       ? addressResult.address || null
       : null;
 

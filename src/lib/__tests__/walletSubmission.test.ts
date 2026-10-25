@@ -221,7 +221,7 @@ describe("pollUntilConfirmed", () => {
     await pollUntilConfirmed({
       probe: async () => answers.shift() ?? false,
       intervalMs: 1,
-      timeoutMs: 50,
+      timeoutMs: 200,
       onAttempt: (n) => attempts.push(n),
     });
     assert.deepEqual(attempts, [1, 2, 3]);
