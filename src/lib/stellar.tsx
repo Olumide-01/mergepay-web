@@ -459,10 +459,27 @@ export async function connectWallet(): Promise<string> {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem(WALLET_CONNECTED_SESSION_KEY);
     }
-    throw new WalletNotInstalledError();
+    const err = new WalletNotInstalledError();
+    useAuth.getState().setWalletError({
+      code: "not_installed",
+      message: err.message,
+    });
+    throw err;
   }
   try {
-    const res = await withTimeout(requestAccess(), 8000, "Freighter connection request timed out.");
+    let res: unknown;
+    try {
+      res = await withTimeout(requestAccess(), 8000, "Freighter connection request timed out.");
+    } catch (reqErr) {
+      const msg = reqErr instanceof Error ? reqErr.message : String(reqErr);
+      const code = classifyWalletMessage(msg);
+      const walletErr = errorForCode(code, msg);
+      useAuth.getState().setWalletError({
+        code: walletErr.code,
+        message: walletErr.message,
+      });
+      throw walletErr;
+    }
     throwOnError(res);
     let pk: string | undefined;
     if (typeof res === "string") pk = res;
@@ -487,9 +504,15 @@ export async function connectWallet(): Promise<string> {
         sessionStorage.setItem(WALLET_CONNECTED_SESSION_KEY, "true");
         sessionStorage.setItem(WALLET_ADDRESS_SESSION_KEY, pk);
       }
+      useAuth.getState().clearWalletError();
       return pk;
     }
-    throw new WalletError("Wallet returned an empty response.");
+    const emptyErr = new WalletError("Wallet returned an empty response.");
+    useAuth.getState().setWalletError({
+      code: emptyErr.code,
+      message: emptyErr.message,
+    });
+    throw emptyErr;
   } catch (e) {
     if (typeof window !== "undefined") {
       // Only clear session storage for actual connection loss, not user rejection
@@ -497,10 +520,18 @@ export async function connectWallet(): Promise<string> {
         sessionStorage.removeItem(WALLET_CONNECTED_SESSION_KEY);
       }
     }
-    if (e instanceof WalletError) throw e;
-    const msg = e instanceof Error ? e.message : String(e);
-    const code = classifyWalletMessage(msg);
-    throw errorForCode(code, msg);
+    const finalErr =
+      e instanceof WalletError
+        ? e
+        : errorForCode(
+            classifyWalletMessage(e instanceof Error ? e.message : String(e)),
+            e instanceof Error ? e.message : String(e)
+          );
+    useAuth.getState().setWalletError({
+      code: finalErr.code,
+      message: finalErr.message,
+    });
+    throw finalErr;
   }
 }
 
@@ -809,38 +840,69 @@ export async function retryWallet<T>(
  * function and take the tab with it.
  */
 export async function loginWithWallet(): Promise<User> {
-  const publicKey = await retryWallet(
-    () => connectWallet(),
-    { maxRetries: 2, retryDelayMs: 500 },
-    { retryOn: ["network", "unknown", "disconnected"] }
-  );
+  const available = await isFreighterAvailable();
+  if (!available) {
+    const err = new WalletNotInstalledError();
+    useAuth.getState().setWalletError({
+      code: "not_installed",
+      message: err.message,
+    });
+    throw err;
+  }
 
-  // Checked after access is granted (Freighter only reports its network to an
-  // allowed origin) and before the challenge is built: a challenge for one
-  // network signed against another fails with an opaque error.
-  await assertWalletNetwork();
-
-  const challenge = await api.authChallenge(publicKey);
-  const signed = await signXdr(challenge.transaction, challenge.networkPassphrase);
-  const { token, user } = await api.authVerify(signed);
-
-  // The verifier is authoritative: the API never returns an unauthorized
-  // token for a valid signature, so a shape it does not recognize makes the
-  // transport or the backend misconfigured. Fail fast instead of seeding the
-  // JWT cache with a token we cannot trust.
-  if (!isSessionToken(token)) {
-    throw new WalletError(
-      "Wallet server returned an unexpected response. Please check Freighter and try again.",
-      "network"
+  try {
+    const publicKey = await retryWallet(
+      () => connectWallet(),
+      { maxRetries: 2, retryDelayMs: 500 },
+      { retryOn: ["network", "unknown", "disconnected"] }
     );
-  }
 
-  if (!user || typeof user?.stellarPublicKey !== "string" || !user.stellarPublicKey) {
-    throw new WalletError("Wallet server returned an unexpected user record.", "network");
-  }
+    // Checked after access is granted (Freighter only reports its network to an
+    // allowed origin) and before the challenge is built: a challenge for one
+    // network signed against another fails with an opaque error.
+    await assertWalletNetwork();
 
-  useAuth.getState().setSession(token, user);
-  return user;
+    const challenge = await api.authChallenge(publicKey);
+    const signed = await signXdr(challenge.transaction, challenge.networkPassphrase);
+    const { token, user } = await api.authVerify(signed);
+
+    // The verifier is authoritative: the API never returns an unauthorized
+    // token for a valid signature, so a shape it does not recognize makes the
+    // transport or the backend misconfigured. Fail fast instead of seeding the
+    // JWT cache with a token we cannot trust.
+    if (!isSessionToken(token)) {
+      throw new WalletError(
+        "Wallet server returned an unexpected response. Please check Freighter and try again.",
+        "network"
+      );
+    }
+
+    if (!user || typeof user?.stellarPublicKey !== "string" || !user.stellarPublicKey) {
+      throw new WalletError("Wallet server returned an unexpected user record.", "network");
+    }
+
+    useAuth.getState().clearWalletError();
+    useAuth.getState().setSession(token, user);
+    return user;
+  } catch (err) {
+    if (err instanceof WalletError) {
+      useAuth.getState().setWalletError({
+        code: err.code,
+        message: err.message,
+      });
+    } else if (err instanceof NetworkMismatchError) {
+      useAuth.getState().setWalletError({
+        code: "network_mismatch",
+        message: err.message,
+      });
+    } else if (err instanceof Error) {
+      useAuth.getState().setWalletError({
+        code: "unknown",
+        message: err.message,
+      });
+    }
+    throw err;
+  }
 }
 
 export async function logout() {

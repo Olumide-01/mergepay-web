@@ -9,6 +9,21 @@ export interface PersistedSession {
   lastAuthenticatedAt: string | null;
 }
 
+export type WalletConnectionErrorCode =
+  | "not_installed"
+  | "locked"
+  | "user_rejected"
+  | "timeout"
+  | "network"
+  | "network_mismatch"
+  | "unknown"
+  | string;
+
+export interface WalletConnectionError {
+  code: WalletConnectionErrorCode;
+  message: string;
+}
+
 export interface AuthState {
   token: string | null;
   user: User | null;
@@ -16,12 +31,15 @@ export interface AuthState {
   activeWalletPublicKey: string | null;
   restoreStatus: "idle" | "checking" | "settled";
   sessionExpired: boolean;
+  walletError: WalletConnectionError | null;
   setSession: (token: string, user: User) => void;
   clear: () => void;
   forgetWallet: () => void;
   setActiveWalletPublicKey: (publicKey: string | null) => void;
   setRestoreStatus: (status: "idle" | "checking" | "settled") => void;
   setSessionExpired: (expired: boolean) => void;
+  setWalletError: (error: WalletConnectionError | null) => void;
+  clearWalletError: () => void;
 }
 
 /** Envelope shape this store writes; bumped with `SESSION_SCHEMA_VERSION`. */
@@ -156,6 +174,7 @@ export const useAuth = create<AuthState>()(
       activeWalletPublicKey: null,
       restoreStatus: "idle",
       sessionExpired: false,
+      walletError: null,
       setSession: (token: string, user: User) => {
         memoryToken = token;
         set({
@@ -165,6 +184,7 @@ export const useAuth = create<AuthState>()(
           activeWalletPublicKey: user.stellarPublicKey,
           restoreStatus: "settled",
           sessionExpired: false,
+          walletError: null,
         });
       },
       clear: () => {
@@ -174,6 +194,7 @@ export const useAuth = create<AuthState>()(
           user: null,
           restoreStatus: "settled",
           sessionExpired: false,
+          walletError: null,
         });
       },
       forgetWallet: () => {
@@ -185,6 +206,7 @@ export const useAuth = create<AuthState>()(
           activeWalletPublicKey: null,
           restoreStatus: "settled",
           sessionExpired: false,
+          walletError: null,
         });
       },
       setActiveWalletPublicKey: (publicKey: string | null) => {
@@ -195,6 +217,12 @@ export const useAuth = create<AuthState>()(
       },
       setSessionExpired: (expired: boolean) => {
         set({ sessionExpired: expired });
+      },
+      setWalletError: (error: WalletConnectionError | null) => {
+        set({ walletError: error });
+      },
+      clearWalletError: () => {
+        set({ walletError: null });
       },
     }),
     {
