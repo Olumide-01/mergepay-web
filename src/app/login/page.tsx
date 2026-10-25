@@ -33,6 +33,7 @@ import {
 import { handleApiError } from "@/lib/errorHandler";
 import { showWalletErrorToast } from "@/lib/walletToasts";
 import { inviteJoinPath } from "@/lib/inviteLink";
+import { WalletWarningDialog } from "@/components/wallet/WalletWarningDialog";
 
 /**
  * After auth, jump to a parked invite link if one exists, else the
@@ -77,6 +78,9 @@ export default function LoginPage() {
   // The wallet's own active account, tracked independently of the
   // session, so the screen names the key the user is about to sign with.
   const activeWalletPublicKey = useAuthStore((s) => s.activeWalletPublicKey);
+  const walletError = useAuthStore((s) => s.walletError);
+  const clearWalletError = useAuthStore((s) => s.clearWalletError);
+  const setWalletError = useAuthStore((s) => s.setWalletError);
   const [loading, setLoading] = useState(false);
   const [hasFreighter, setHasFreighter] = useState<boolean | null>(null);
   // The wallet's network, once we can read it. `null` means "not known" —
@@ -116,9 +120,22 @@ export default function LoginPage() {
     connectingRef.current = true;
     setLoading(true);
     try {
+      // 1. Detect if Freighter extension is installed before invoking connection hooks
+      const available = await isFreighterAvailable();
+      if (!available) {
+        setHasFreighter(false);
+        setWalletError({
+          code: "not_installed",
+          message: "Freighter browser extension was not detected in this browser.",
+        });
+        return;
+      }
+      setHasFreighter(true);
+
       const user = await login();
       if (user) {
         setWalletNetwork(null);
+        clearWalletError();
         toast.success("Signed in with Stellar");
         router.replace(loginTarget());
       }
@@ -128,6 +145,10 @@ export default function LoginPage() {
         // the extension, which takes longer than a toast lives.
         setWalletNetwork(e.walletNetwork);
       } else if (e instanceof WalletError) {
+        setWalletError({
+          code: e.code,
+          message: e.message,
+        });
         if (e.code === "not_installed") {
           // Rich message with an install link — shown instead of plain text.
           toast.error(<NotInstalledMessage />);
@@ -291,6 +312,14 @@ export default function LoginPage() {
               network.
             </p>
           </motion.div>
+
+          <WalletWarningDialog
+            open={Boolean(walletError)}
+            error={walletError}
+            onClose={clearWalletError}
+            onRetry={handleConnect}
+            isRetrying={loading || authLoading}
+          />
 
           <p className="mt-6 text-center text-xs text-ink/50">
             New to Stellar wallets?{" "}

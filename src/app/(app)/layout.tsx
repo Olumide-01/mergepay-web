@@ -7,18 +7,12 @@ import { WalletErrorBoundary } from "../../components/wallet/WalletErrorBoundary
 import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
 import { MutationSyncIndicator } from "../../components/ui/MutationSyncIndicator";
 import { SessionTimeoutDialog } from "../../components/SessionTimeoutDialog";
-import { useSessionRestore } from "../../hooks/useSessionRestore";
 import { useIdleSession } from "../../hooks/useIdleSession";
 import { useAuth } from "../../lib/auth-store";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { restoreSession } = useSessionRestore();
   const { forgetWallet } = useAuth();
   const [showTimeoutDialog, setShowTimeoutDialog] = useState(false);
-
-  useEffect(() => {
-    restoreSession();
-  }, [restoreSession]);
 
   const handleSessionTimeout = () => {
     forgetWallet();

@@ -6,7 +6,12 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { WatchWalletChanges } from "@stellar/freighter-api";
 import { useAuth as useAuthStore } from "@/lib/auth-store";
-import { loginWithWallet, logout as walletLogout } from "@/lib/stellar";
+import {
+  loginWithWallet,
+  logout as walletLogout,
+  isFreighterAvailable,
+  WalletNotInstalledError,
+} from "@/lib/stellar";
 import { shortKey } from "@/lib/format";
 import { isSessionExpired, resetSessionExpired } from "@/lib/api";
 import { shouldPurgeAccountData } from "@/lib/walletSession";
@@ -34,6 +39,9 @@ export function useAuth() {
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
   const restoreStatus = useAuthStore((s) => s.restoreStatus);
+  const walletError = useAuthStore((s) => s.walletError);
+  const clearWalletError = useAuthStore((s) => s.clearWalletError);
+  const setWalletError = useAuthStore((s) => s.setWalletError);
 
   const isAuthenticated = !!token;
   /** True until the persisted session has been resolved one way or another. */
@@ -51,8 +59,20 @@ export function useAuth() {
   }, [queryClient]);
 
   const login = useCallback(async () => {
+    // Detect if Freighter extension is installed before invoking connection hooks
+    const available = await isFreighterAvailable();
+    if (!available) {
+      const err = new WalletNotInstalledError();
+      useAuthStore.getState().setWalletError({
+        code: "not_installed",
+        message: err.message,
+      });
+      throw err;
+    }
+
     setIsLoading(true);
     try {
+      useAuthStore.getState().clearWalletError();
       const loggedInUser = await loginWithWallet();
       resetSessionExpired();
       await queryClient.invalidateQueries();
@@ -113,6 +133,9 @@ export function useAuth() {
     token,
     restoring,
     isAuthenticated,
+    walletError,
+    setWalletError,
+    clearWalletError,
     login,
     logout,
     isLoading,

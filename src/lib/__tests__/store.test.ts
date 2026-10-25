@@ -358,3 +358,45 @@ describe("isPersistedAuthState", () => {
     assert.equal(mod.isPersistedAuthState(null), false);
   });
 });
+
+describe("auth store wallet error state (#716)", () => {
+  it("initializes with walletError as null", () => {
+    assert.equal(state().walletError, null);
+  });
+
+  it("sets and clears wallet error state", () => {
+    state().setWalletError({
+      code: "locked",
+      message: "Freighter wallet is locked",
+    });
+    assert.deepEqual(state().walletError, {
+      code: "locked",
+      message: "Freighter wallet is locked",
+    });
+
+    state().clearWalletError();
+    assert.equal(state().walletError, null);
+  });
+
+  it("resets walletError when setSession is called", () => {
+    state().setWalletError({
+      code: "not_installed",
+      message: "Freighter not found",
+    });
+    assert.ok(state().walletError !== null);
+
+    state().setSession("live.jwt.value", USER);
+    assert.equal(state().walletError, null);
+  });
+
+  it("resets walletError on clear and forgetWallet", () => {
+    state().setWalletError({ code: "timeout", message: "timed out" });
+    state().clear();
+    assert.equal(state().walletError, null);
+
+    state().setWalletError({ code: "timeout", message: "timed out" });
+    state().forgetWallet();
+    assert.equal(state().walletError, null);
+  });
+});
+
